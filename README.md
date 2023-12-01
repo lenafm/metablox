@@ -1,7 +1,12 @@
 # metablox
 
 metablox (metadata block structure exploration) is a Python library for quantifying the relationship between 
-categorical node metadata and block structure of a network.
+categorical node metadata and block structure of a network, as introduced in
+
+[Mangold, Lena and Camille Roth. “Quantifying metadata-structure relationships in networks using 
+description length.” (2023) arXiv:2311.18705 [cs.SI]](https://arxiv.org/abs/2311.18705).
+
+Please cite the paper if you use the measure in your work.
 
 ## Installation
 
@@ -33,6 +38,9 @@ metadata = ['value']
 
 gamma = calculate_gamma(g=g, metadata=metadata)
 ```
+
+If you have a metadata partition for a network which you have not yet saved as a vertex property to the `graph-tool` 
+Graph object, you can also pass the `metadata` as a list of `np.arrays`!
 
 The `calculate_gamma` function returns a dictionary, with an entry for each element in the `metadata` list. For
 each metadata, it includes a nested dictionary with the elements of the $`\gamma`$ vector, with the key being
