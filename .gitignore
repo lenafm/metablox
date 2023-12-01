@@ -1,0 +1,25 @@
+# rstudio files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+
+# pycharm files
+venv/
+.idea/
+__pycache__/
+
+# data files and folders
+output
+data/polarization_data
+paper
+
+# other files
+linate/
+
+# credentials
+oauth/
+
+# jupyter notebook files
+.ipynb_checkpoints
