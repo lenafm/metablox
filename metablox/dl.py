@@ -83,6 +83,9 @@ def sbm_entropy(block_stats: Optional[tuple] = None,
         Exception: If neither block_stats nor both graph g and partition b are specified.
     """
     if block_stats is None:
+        if state is None:
+            if b is None or g is None:
+                raise Exception("Either state or both graph g and partition b must be specified.")
         graph_copy = g.copy() if state is None else None
         block_stats = get_block_stats(state=state, g=graph_copy, b=b)
     bg, b, N, E, B, ers, nr, er, ers_mat = block_stats
@@ -358,9 +361,9 @@ def get_degree_histograms(state: gt.BlockState = None, g: gt.Graph = None, b: Un
     degrees = g.get_out_degrees(g.get_vertices())
     for v in g.vertices():
         r = b[v]
-        if not r in hist: hist[r] = {}
+        if r not in hist: hist[r] = {}
         deg = degrees[int(v)]
-        if not deg in hist[r]: hist[r][deg] = 0
+        if deg not in hist[r]: hist[r][deg] = 0
         hist[r][deg] += 1
     hist = {k: [(key, val) for key, val in v.items()] for k, v in hist.items()}
     return hist
