@@ -77,13 +77,10 @@ def calculate_gamma(g, metadata,
                                                         iters_rand=iters_rand,
                                                         uniform=uniform, degree_dl_kind=degree_dl_kind,
                                                         disable_progress_bar=disable_progress_bar)
-    if verbose:
-        tqdm.write("Determining optimal description length.")
-    optimal_dl = determine_optimal_dl(states_dls=states_dls, variants=variants,
-                                      meta_dls=meta_dls, metadata=metadata)
+
     if verbose:
         tqdm.write("Calculating gamma values.")
-    gammas = calculate_gamma_values(meta_dls=meta_dls, meta_dls_randomised=meta_dls_randomised, optimal_dl=optimal_dl,
+    gammas = calculate_gamma_values(meta_dls=meta_dls, meta_dls_randomised=meta_dls_randomised, optimal_dl=states_dls,
                                     metadata=metadata, variants=variants)
 
     if return_dls:
@@ -95,13 +92,11 @@ def calculate_gamma(g, metadata,
             extra_output = {'meta_dls': meta_dls,
                             'meta_dls_randomised': meta_dls_randomised,
                             'state_dls': states_dls,
-                            'optimal_dl': optimal_dl,
                             'blocklabel_dl': blocklabel_dl}
         else:
             extra_output = {'meta_dls': meta_dls,
                             'meta_dls_randomised': meta_dls_randomised,
-                            'state_dls': states_dls,
-                            'optimal_dl': optimal_dl}
+                            'state_dls': states_dls}
         if return_states:
             extra_output['states'] = states
         return gammas, extra_output
@@ -276,26 +271,6 @@ def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, de
     return meta_dls_randomised
 
 
-def determine_optimal_dl(states_dls, variants, meta_dls, metadata):
-    """
-    Determine the optimal description length among block states and metadata description lengths.
-
-    Args:
-        states_dls: A dictionary of description lengths for block states.
-        variants: A list of SBM variants (options: 'dc', 'ndc', and 'pp') for which the description lengths have been
-        calculated.
-        meta_dls: A dictionary containing the description lengths for each metadata attribute.
-        metadata: A list of strings representing the metadata attributes.
-
-    Returns:
-        The optimal description length.
-    """
-    min_dl_meta = np.min([meta_dls[meta][variant] for meta in metadata for variant in variants])
-    min_dl_states = np.min(list(states_dls.values()))
-    optimal_dl = np.min([min_dl_states, min_dl_meta])
-    return optimal_dl
-
-
 def get_dls_states(states):
     """
     Calculate the description lengths of the given block states.
@@ -326,9 +301,9 @@ def calculate_gamma_values(meta_dls, meta_dls_randomised, variants, optimal_dl, 
     """
     gamma_val = {}
     for meta in metadata:
-        min_percentile = np.min([np.percentile(meta_dls_randomised[meta][variant], percentile) for variant in variants])
-        gamma_val[meta] = {variant: gamma(partition_dl=meta_dls[meta][variant], optimal_dl=optimal_dl,
-                                          random_dl=min_percentile)
+        gamma_val[meta] = {variant: gamma(partition_dl=meta_dls[meta][variant],
+                                          optimal_dl=optimal_dl[variant],
+                                          random_dl=np.percentile(meta_dls_randomised[meta][variant], percentile))
                            for variant in variants}
     return gamma_val
 
