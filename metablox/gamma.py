@@ -8,22 +8,18 @@ from metablox.dl import calculate_dl
 from metablox.utils import is_multigraph, simplify_multigraph, make_list, str_to_int_mapping
 
 
-def calculate_gamma(g, metadata,
-                    variants='all',
-                    iters_rand=100,
-                    new_metadata_names=None,
-                    uniform=False, degree_dl_kind='distributed',
-                    variants_infer='all',
-                    refine_states=False,
-                    iters_refine=1000,
-                    return_dls=False, return_states=False,
-                    verbose=True, synthetic=False):
+def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all', iters_rand=100,
+                    new_metadata_names=None, uniform=False, degree_dl_kind='distributed', variants_infer='all',
+                    refine_states=False, iters_refine=1000, return_dls=False, return_states=False, verbose=True,
+                    synthetic=False):
     """
     Calculate the gamma values for each metadata attribute based on the graph and metadata.
 
     Args:
         g: A graph_tool.Graph object representing the graph.
         metadata: The metadata input, which can be a list of strings or a list of NumPy arrays.
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
         variants (str or list): A string 'all' or a list of SBM variants (options: 'dc', 'ndc', and 'pp') to be included
         as models for the calculation of gamma (default: 'all').
         iters_rand (optional): The number of random iterations for computing statistical significance (default: 100).
@@ -59,23 +55,27 @@ def calculate_gamma(g, metadata,
             ...
         }
     """
+    if not use_gt:
+        if allow_multigraphs:
+            raise ValueError('Can only allow for multigraphs if gt = True.')
     variants = check_variants(variants=variants)
     variants_infer = check_variants(variants=variants_infer)
     g, metadata = check_input(graph=g, metadata=metadata, new_metadata_names=new_metadata_names, verbose=verbose)
     if verbose:
         tqdm.write("Minimizing block models and nested block models.")
     states = get_states(g=g, variants=variants_infer, refine=refine_states, iters_refine=iters_refine)
-    states_dls = get_dls_states(states=states)
+    states_dls = get_dls_states(states=states, allow_multigraphs=allow_multigraphs)
     if verbose:
         tqdm.write("Calculating description lengths for metadata.")
-    meta_dls = calculate_meta_dls(g=g, metadata=metadata, variants=variants,
-                                  uniform=uniform, degree_dl_kind=degree_dl_kind)
+    meta_dls = calculate_meta_dls(g=g, metadata=metadata, variants=variants, uniform=uniform,
+                                  degree_dl_kind=degree_dl_kind, use_gt=use_gt, allow_multigraphs=allow_multigraphs)
     if verbose:
         tqdm.write("Calculating description lengths for randomised metadata.")
     disable_progress_bar = not verbose
-    meta_dls_randomised = calculate_meta_dls_randomised(g=g, metadata=metadata, variants=variants,
-                                                        iters_rand=iters_rand,
-                                                        uniform=uniform, degree_dl_kind=degree_dl_kind,
+    meta_dls_randomised = calculate_meta_dls_randomised(g=g, metadata=metadata, iters_rand=iters_rand,
+                                                        variants=variants, uniform=uniform,
+                                                        degree_dl_kind=degree_dl_kind, use_gt=use_gt,
+                                                        allow_multigraphs=allow_multigraphs,
                                                         disable_progress_bar=disable_progress_bar)
 
     if verbose:
@@ -87,8 +87,9 @@ def calculate_gamma(g, metadata,
         if synthetic:
             if verbose:
                 tqdm.write("Determining description length of planted partition.")
-            blocklabel_dl = calculate_blocklabel_dls(g=g, variants=variants,
-                                                     uniform=uniform, degree_dl_kind=degree_dl_kind)
+            blocklabel_dl = calculate_blocklabel_dls(g=g, variants=variants, uniform=uniform,
+                                                     degree_dl_kind=degree_dl_kind, use_gt=use_gt,
+                                                     allow_multigraphs=allow_multigraphs)
             extra_output = {'meta_dls': meta_dls,
                             'meta_dls_randomised': meta_dls_randomised,
                             'state_dls': states_dls,
@@ -148,7 +149,7 @@ def validate_variants(input_variants, valid_variants):
     return input_variants
 
 
-def calculate_blocklabel_dls(g, variants, uniform, degree_dl_kind):
+def calculate_blocklabel_dls(g, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
     Calculate description lengths based on block labels within a graph.
 
@@ -157,17 +158,19 @@ def calculate_blocklabel_dls(g, variants, uniform, degree_dl_kind):
         variants (list): A list of SBM variants to consider.
         uniform (bool): Flag indicating whether to use uniform entropy estimation.
         degree_dl_kind (str): The kind of degree distribution used in entropy estimation.
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
 
     Returns:
         list: A list of calculated description lengths for each SBM variant.
 
     """
     blocklabel_partition = np.array(g.vp.blocklabel.a, dtype=int)
-    return calculate_dls(g=g, meta_partition=blocklabel_partition, variants=variants,
-                         uniform=uniform, degree_dl_kind=degree_dl_kind)
+    return calculate_dls(g=g, meta_partition=blocklabel_partition, variants=variants, uniform=uniform,
+                         degree_dl_kind=degree_dl_kind, use_gt=use_gt, allow_multigraphs=allow_multigraphs)
 
 
-def calculate_meta_dls(g, metadata, variants, uniform, degree_dl_kind):
+def calculate_meta_dls(g, metadata, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
     Calculate the description lengths of each metadata attribute under the DCSBM and PP-DCSBM.
 
@@ -177,6 +180,8 @@ def calculate_meta_dls(g, metadata, variants, uniform, degree_dl_kind):
         variants: A list of strings indicating the variants for which the description length should be calculated.
         uniform: Flag indicating whether to use uniform entropy estimation.
         degree_dl_kind: The kind of degree distribution used in entropy estimation.
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
 
     Returns:
         A dictionary containing the description lengths for each metadata attribute.
@@ -184,12 +189,13 @@ def calculate_meta_dls(g, metadata, variants, uniform, degree_dl_kind):
     meta_dls = {}
     for meta in metadata:
         meta_partition = np.array(g.vp[meta].a, dtype=int)
-        meta_dls[meta] = calculate_dls(g=g, meta_partition=meta_partition, variants=variants,
-                                       uniform=uniform, degree_dl_kind=degree_dl_kind)
+        meta_dls[meta] = calculate_dls(g=g, meta_partition=meta_partition, variants=variants, uniform=uniform,
+                                       degree_dl_kind=degree_dl_kind,
+                                       use_gt=use_gt, allow_multigraphs=allow_multigraphs)
     return meta_dls
 
 
-def calculate_dls(g, meta_partition, variants, uniform, degree_dl_kind):
+def calculate_dls(g, meta_partition, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
     Calculate description lengths for multiple SBM variants.
 
@@ -199,17 +205,20 @@ def calculate_dls(g, meta_partition, variants, uniform, degree_dl_kind):
         variants (list): A list of SBM variants for which description lengths should be calculated.
         uniform (bool): Flag indicating whether to use uniform entropy estimation in the PPSBM case.
         degree_dl_kind (str): The kind of degree distribution used in entropy estimation.
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
 
     Returns:
         dict: A dictionary containing calculated description lengths for each SBM variant.
 
     """
-    return {variant: calculate_dl_variant(g=g, meta_partition=meta_partition, variant=variant,
-                                          uniform=uniform, degree_dl_kind=degree_dl_kind)
+    return {variant: calculate_dl_variant(g=g, meta_partition=meta_partition, variant=variant, uniform=uniform,
+                                          degree_dl_kind=degree_dl_kind,
+                                          use_gt=use_gt, allow_multigraphs=allow_multigraphs)
             for variant in variants}
 
 
-def calculate_dl_variant(g, meta_partition, variant, uniform, degree_dl_kind):
+def calculate_dl_variant(g, meta_partition, variant, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
     Calculate the description length for a specific SBM variant.
 
@@ -219,22 +228,29 @@ def calculate_dl_variant(g, meta_partition, variant, uniform, degree_dl_kind):
         variant (str): The SBM variant ('dc', 'ndc', or 'pp').
         uniform (bool): Flag indicating whether to use uniform entropy estimation.
         degree_dl_kind (str): The kind of degree distribution used in entropy estimation.
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
 
     Returns:
         float: The calculated description length for the specified SBM variant.
 
     """
-    blockstate = 'BlockState'
-    if variant == 'pp':
-        blockstate = 'PPBlockState'
     dc = False
     if variant in ['dc', 'pp']:
         dc = True
-    return calculate_dl(g=g, b=meta_partition, dc=dc,
-                        blockstate=blockstate, uniform=uniform, degree_dl_kind=degree_dl_kind)
+    if use_gt:
+        if variant == 'pp':
+            return gt.PPBlockState(g=g, b=meta_partition).entropy()
+        return gt.BlockState(g=g, b=meta_partition, deg_corr=dc).entropy(multigraph=allow_multigraphs)
+    else:
+        blockstate = 'BlockState'
+        if variant == 'pp':
+            blockstate = 'PPBlockState'
+        return calculate_dl(g=g, b=meta_partition, dc=dc,
+                            blockstate=blockstate, uniform=uniform, degree_dl_kind=degree_dl_kind)
 
 
-def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, degree_dl_kind,
+def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs,
                                   disable_progress_bar=False):
     """
     Calculate the description lengths of randomised metadata under the DCSBM and PP-DCSBM.
@@ -246,6 +262,8 @@ def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, de
         variants: A list of strings indicating the variants for which the description length should be calculated.
         uniform: Flag indicating whether to use uniform entropy estimation.
         degree_dl_kind: The kind of degree distribution used in entropy estimation.
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
         disable_progress_bar: Flag indicating whether to disable progress bar (default: False).
 
     Returns:
@@ -262,26 +280,28 @@ def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, de
                 meta_partition_randomised = np.random.permutation(meta_partition)
                 for variant in variants:
                     dls_rand[variant][j] = calculate_dl_variant(g=g, meta_partition=meta_partition_randomised,
-                                                                variant=variant,
-                                                                uniform=uniform,
-                                                                degree_dl_kind=degree_dl_kind)
+                                                                variant=variant, uniform=uniform,
+                                                                degree_dl_kind=degree_dl_kind, use_gt=use_gt,
+                                                                allow_multigraphs=allow_multigraphs)
                 pbar.update(1)
 
         meta_dls_randomised[meta] = dls_rand
     return meta_dls_randomised
 
 
-def get_dls_states(states):
+def get_dls_states(states, allow_multigraphs):
     """
     Calculate the description lengths of the given block states.
 
     Args:
         states: A dictionary of block states to compute description lengths for.
+        allow_multigraphs: Flag to indicate if multigraphs are allowed.
 
     Returns:
         A dictionary of description lengths for each block state.
     """
-    return {variant: s.entropy() if variant == 'pp' else s.entropy(multigraph=False) for variant, s in states.items()}
+    return {variant: s.entropy() if variant == 'pp' else s.entropy(multigraph=allow_multigraphs)
+            for variant, s in states.items()}
 
 
 def calculate_gamma_values(meta_dls, meta_dls_randomised, variants, optimal_dl, metadata, percentile=1):
