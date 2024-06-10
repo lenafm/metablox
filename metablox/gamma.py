@@ -60,11 +60,13 @@ def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all'
             raise ValueError('Can only allow for multigraphs if gt = True.')
     variants = check_variants(variants=variants)
     variants_infer = check_variants(variants=variants_infer)
-    g, metadata = check_input(graph=g, metadata=metadata, new_metadata_names=new_metadata_names, verbose=verbose)
+    g, metadata = check_input(graph=g, metadata=metadata, allow_multigraphs=allow_multigraphs,
+                              new_metadata_names=new_metadata_names, verbose=verbose)
     if verbose:
         tqdm.write("Minimizing block models and nested block models.")
     states = get_states(g=g, variants=variants_infer, refine=refine_states, iters_refine=iters_refine)
     states_dls = get_dls_states(states=states, allow_multigraphs=allow_multigraphs)
+    uncompressed_dls = calculate_uncompressed_dls(g=g, variants=variants, allow_multigraphs=allow_multigraphs)
     if verbose:
         tqdm.write("Calculating description lengths for metadata.")
     meta_dls = calculate_meta_dls(g=g, metadata=metadata, variants=variants, uniform=uniform,
@@ -93,11 +95,13 @@ def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all'
             extra_output = {'meta_dls': meta_dls,
                             'meta_dls_randomised': meta_dls_randomised,
                             'state_dls': states_dls,
+                            'uncompressed_dls': uncompressed_dls,
                             'blocklabel_dl': blocklabel_dl}
         else:
             extra_output = {'meta_dls': meta_dls,
                             'meta_dls_randomised': meta_dls_randomised,
-                            'state_dls': states_dls}
+                            'state_dls': states_dls,
+                            'uncompressed_dls': uncompressed_dls}
         if return_states:
             extra_output['states'] = states
         return gammas, extra_output
@@ -240,7 +244,7 @@ def calculate_dl_variant(g, meta_partition, variant, uniform, degree_dl_kind, us
         dc = True
     if use_gt:
         if variant == 'pp':
-            return gt.PPBlockState(g=g, b=meta_partition).entropy()
+            return gt.PPBlockState(g=g, b=meta_partition).entropy(uniform=uniform, degree_dl_kind=degree_dl_kind)
         return gt.BlockState(g=g, b=meta_partition, deg_corr=dc).entropy(multigraph=allow_multigraphs)
     else:
         blockstate = 'BlockState'
@@ -304,6 +308,27 @@ def get_dls_states(states, allow_multigraphs):
             for variant, s in states.items()}
 
 
+def calculate_uncompressed_dls(g, variants, allow_multigraphs):
+    """
+    Calculate the uncompressed description lengths (B=1).
+
+    Args:
+        g: A graph_tool.Graph object representing the graph.
+        variants: A list of strings indicating the variants for which the description length should be calculated.
+        allow_multigraphs: Flag to indicate if multigraphs are allowed.
+
+    Returns:
+        A dictionary of description lengths for each block state.
+    """
+    deg_corr = {'dc': True,
+                'ndc': False}
+    b = [0] * g.num_vertices()
+    return {variant: gt.PPBlockState(g=g, b=b).entropy()
+            if variant == 'pp'
+            else gt.BlockState(g=g, B=1, deg_corr=deg_corr[variant]).entropy(multigraph=allow_multigraphs)
+            for variant in variants}
+
+
 def calculate_gamma_values(meta_dls, meta_dls_randomised, variants, optimal_dl, metadata, percentile=1):
     """
     Calculate the gamma values based on the description lengths.
@@ -343,13 +368,14 @@ def gamma(partition_dl, optimal_dl, random_dl):
     return (partition_dl - optimal_dl) / (random_dl - optimal_dl)
 
 
-def check_input(graph, metadata, new_metadata_names=None, verbose=True):
+def check_input(graph, metadata, allow_multigraphs, new_metadata_names=None, verbose=True):
     """
     Perform checks on g and metadata as preparation for the calculation of the gamma vector.
 
     Args:
         graph: A graph_tool.Graph object representing the graph.
         metadata: The metadata input, which can be a list of strings or a list of NumPy arrays.
+        allow_multigraphs: Flag to indicate if multigraphs are allowed.
         new_metadata_names: (Optional) A list of strings representing new metadata names
                             corresponding to the NumPy arrays in 'metadata'.
         verbose: Flag indicating whether to display detailed output (default: True).
@@ -374,10 +400,11 @@ def check_input(graph, metadata, new_metadata_names=None, verbose=True):
             print("Converted graph to undirected.")
 
     # Check if the graph is a simple graph
-    if is_multigraph(g=g):
-        g = simplify_multigraph(multigraph=g)
-        if verbose:
-            print("Simplified graph.")
+    if not allow_multigraphs:
+        if is_multigraph(g=g):
+            g = simplify_multigraph(multigraph=g)
+            if verbose:
+                print("Simplified graph.")
 
     # Check metadata and convert if necessary
     if isinstance(metadata, list) and isinstance(metadata[0], np.ndarray):
