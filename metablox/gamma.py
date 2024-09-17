@@ -1,4 +1,4 @@
-"""Gamma calculations"""
+"""Metablox calculations"""
 
 import copy
 import numpy as np
@@ -13,48 +13,73 @@ def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=Tru
                                  variants_infer='all', refine_states=False, iters_refine=1000, return_dls=False,
                                  return_states=False, verbose=True):
     """
-    Calculate the gamma values for each metadata attribute based on the graph and metadata.
+    Calculates the gamma values for each metadata attribute based on the graph and metadata.
 
-    Args:
-        g: A graph_tool.Graph object representing the graph.
-        metadata: The metadata input, which can be a list of strings or a list of NumPy arrays.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    metadata : list
+        The metadata input, which can be a list of strings or a list of NumPy arrays.
+
+    use_gt : bool, optional
+        Flag indicating if the description length calculation from the graph-tool library should be used
         (default: True).
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (can only be True if gt=True; default: True).
-        variants (str or list): A string 'all' or a list of SBM variants (options: 'dc', 'ndc', and 'pp') to be included
-        as models for the calculation of gamma (default: 'all').
-        iters_rand (optional): The number of random iterations for computing statistical significance (default: 100).
-        new_metadata_names (optional): Labels for metadata if metadata is a list of arrays (default: None).
-        uniform (optional): Flag indicating whether to use uniform entropy estimation for pp sbm (default: False).
-        degree_dl_kind (optional): The kind of degree distribution used in entropy estimation (default: 'distributed').
-        variants_infer (str or list): A string 'all' or a list of SBM variants (options: 'dc', 'ndc', and 'pp') to be
-        included for the inference of the optimal partition (default: 'all').
-        refine_states: Flag indicating whether to refine minimisation of block states by running 10*iters_refine sweeps
-        of the MCMC with zero temperature (default: False).
-        iters_refine: If refine_states=True, indicates the number of times the multiflip mcmc algorithm performs 10
-        sweeps. The total number of performed sweeps will therefore be 10*iters_refine (default: 1000).
-        return_dls: Flag indicating whether the description lengths of the metadata, the randomised metadata, the
-        optimal partition, and the blocklabel partition (if synthetic = True) should be returned alongside gamma
-        (default: False).
-        return_states: Flag indicating whether to return the blockmodel states of the fitted SBMs (default: False).
-        verbose: Flag indicating whether to display detailed output (default: False).
+
+    allow_multigraphs : bool, optional
+        Flag indicating if multigraphs should be allowed (can only be True if `use_gt=True`; default: True).
+
+    variants : str or list, optional
+        A string 'all' or a list of SBM variants ('dc', 'ndc', 'pp') to be included in the calculation of gamma
+        (default: 'all').
+
+    iters_rand : int, optional
+        The number of random iterations for computing statistical significance (default: 100).
+
+    new_metadata_names : list, optional
+        Labels for metadata if metadata is a list of arrays (default: None).
+
+    uniform : bool, optional
+        Flag indicating whether to use uniform entropy estimation for the pp SBM (default: False).
+
+    degree_dl_kind : str, optional
+        The kind of degree distribution used in entropy estimation (default: 'distributed').
+
+    variants_infer : str or list, optional
+        A string 'all' or a list of SBM variants ('dc', 'ndc', 'pp') for inference of the optimal partition
+        (default: 'all').
+
+    refine_states : bool, optional
+        Flag indicating whether to refine minimization of block states by running 10 * `iters_refine` sweeps of the
+        MCMC with zero temperature (default: False).
+
+    iters_refine : int, optional
+        If `refine_states=True`, indicates the number of times the multiflip MCMC algorithm performs 10 sweeps.
+        The total number of performed sweeps will be 10 * `iters_refine` (default: 1000).
+
+    return_dls : bool, optional
+        Flag indicating whether to return the description lengths of the metadata, random metadata, optimal partition,
+        and blocklabel partition (if synthetic=True) (default: False).
+
+    return_states : bool, optional
+        Flag indicating whether to return the blockmodel states of the fitted SBMs (default: False).
+
+    verbose : bool, optional
+        Flag indicating whether to display detailed output (default: True).
 
     Returns:
-        A dictionary containing tuples of metablox values for each metadata attribute and for each variant; the tuples
-        contain the gamma value and the edge compression as the accompanying second dimension.
+    -------
+    dict
+        A dictionary containing tuples of gamma values and edge compression for each metadata attribute and each
+        variant, e.g.
         {
-            'metadata_attribute_1': {
-                'dc': (gamma_value_dc_attr1, edge_compression_dc_attr1)
-                'pp': (gamma_value_pp_attr1, edge_compression_pp_attr1)
-            },
-            'metadata_attribute_2': {
-                'dc': (gamma_value_dc_attr2, edge_compression_dc_attr2)
-                'pp': (gamma_value_pp_attr2, edge_compression_pp_attr2)
-            },
-            ...
+        'attr1': {'dc': gamma_value_dc_attr1, 'pp': gamma_value_pp_attr1},
+        'attr2': {'dc': gamma_value_dc_attr2, 'pp': gamma_value_pp_attr2}
         }
-        If return_dls and/or return_states are set to True, the function returns a tuple, with this dictionary as the
-        first element plus a second element with the description lengths/states for each metadata attribute and variant.
+
+    If `return_dls` and/or `return_states` are set to True, the function returns a tuple with the dictionary as the
+    first element, and additional description lengths or states as the second element.
     """
     if not use_gt:
         if allow_multigraphs:
@@ -65,7 +90,7 @@ def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=Tru
                               new_metadata_names=new_metadata_names, verbose=verbose)
     if verbose:
         tqdm.write("Minimizing block models and nested block models.")
-    states = get_states(g=g, variants=variants_infer, refine=refine_states, iters_refine=iters_refine)
+    states = optimise_block_states(g=g, variants=variants_infer, refine=refine_states, iters_refine=iters_refine)
     states_dls = get_dls_states(states=states, allow_multigraphs=allow_multigraphs)
     if verbose:
         tqdm.write("Calculating description lengths for metadata.")
@@ -82,33 +107,68 @@ def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=Tru
 
     if verbose:
         tqdm.write("Calculating gamma values.")
-    vals = compute_metablox_values(meta_dls=meta_dls, meta_dls_randomised=meta_dls_randomised, optimal_dl=states_dls,
-                                   metadata=metadata, num_edges=g.num_edges(), variants=variants)
+    gamma = compute_gamma_values(meta_dls=meta_dls, meta_dls_randomised=meta_dls_randomised, optimal_dl=states_dls,
+                                 metadata=metadata, variants=variants)
+
+    second_dim = compute_edge_compression(optimal_dl=states_dls, variants=variants, num_edges=g.num_edges())
 
     if return_dls:
         extra_output = {'meta_dls': meta_dls,
                         'meta_dls_randomised': meta_dls_randomised}
         if return_states:
             extra_output['states'] = states
-        return vals, extra_output
+        return gamma, second_dim, extra_output
     elif return_states:
-        return vals, {'states': states}
+        return gamma, second_dim, {'states': states}
     else:
-        return vals
+        return gamma, second_dim
+
+
+def compute_edge_compression(optimal_dl, variants, num_edges):
+    """
+    Computes the compression per edge for each variant by dividing the optimal description length (DL) by the total
+    number of edges in the graph.
+
+    Parameters:
+    ----------
+    optimal_dl : dict
+        A dictionary where keys are variant names and values are their optimal description lengths (DL).
+
+    variants : list
+        A list of variant names for which to compute the edge compression.
+
+    num_edges : int
+        The total number of edges in the graph.
+
+    Returns:
+    -------
+    dict
+        A dictionary mapping each variant to its corresponding edge compression ratio (optimal DL / num_edges).
+    """
+    vals = {}
+    for variant in variants:
+        vals[variant] = optimal_dl[variant] / num_edges
+    return vals
 
 
 def check_variants(variants):
     """
-    Check and validate Stochastic Blockmodel (SBM) variants.
+    Checks and validates Stochastic Blockmodel (SBM) variants.
 
-    Args:
-        variants (str or list): A string 'all' or a list of SBM variants to check.
+    Parameters:
+    ----------
+    variants : str or list
+        A string 'all' or a list of SBM variants to check.
 
     Returns:
-        list: A list of validated SBM variants or raises a ValueError if any variant is invalid.
+    -------
+    list
+        A list of validated SBM variants.
 
     Raises:
-        ValueError: If any variant in the input list is invalid.
+    ------
+    ValueError
+        If any variant in the input list is invalid.
     """
     valid_variants = ['dc', 'ndc', 'pp']
 
@@ -120,19 +180,26 @@ def check_variants(variants):
 
 def validate_variants(input_variants, valid_variants):
     """
-    Check the validity of Stochastic Blockmodel (SBM) variants.
+    Checks the validity of Stochastic Blockmodel (SBM) variants.
 
-    Args:
-        input_variants (list): A list of SBM variants to check.
-        valid_variants (list): A list of valid SBM variants.
+    Parameters:
+    ----------
+    input_variants : list
+        A list of SBM variants to check.
 
-    Raises:
-        ValueError: If any variant in the input list is invalid.
+    valid_variants : list
+        A list of valid SBM variants.
 
     Returns:
-        List of valid variants.
-    """
+    -------
+    list
+        A list of valid variants.
 
+    Raises:
+    ------
+    ValueError
+        If any variant in the input list is invalid.
+    """
     if not np.all([variant in valid_variants for variant in input_variants]):
         raise ValueError("Invalid input variant.")
 
@@ -141,19 +208,32 @@ def validate_variants(input_variants, valid_variants):
 
 def calculate_blocklabel_dls(g, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
-    Calculate description lengths based on block labels within a graph.
+    Calculates description lengths based on block labels within a graph.
 
-    Args:
-        g (graph_tool.Graph): The input graph.
-        variants (list): A list of SBM variants to consider.
-        uniform (bool): Flag indicating whether to use uniform entropy estimation.
-        degree_dl_kind (str): The kind of degree distribution used in entropy estimation.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        The input graph.
+
+    variants : list
+        A list of SBM variants to consider.
+
+    uniform : bool
+        Flag indicating whether to use uniform entropy estimation.
+
+    degree_dl_kind : str
+        The kind of degree distribution used in entropy estimation.
+
+    use_gt : bool
+        Flag indicating if the description length calculation from the graph tool library should be used.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed (only possible if `use_gt=True`).
 
     Returns:
-        list: A list of calculated description lengths for each SBM variant.
-
+    -------
+    dict
+        A dictionary containing calculated description lengths for each SBM variant.
     """
     blocklabel_partition = np.array(g.vp.blocklabel.a, dtype=int)
     return calculate_dls(g=g, meta_partition=blocklabel_partition, variants=variants, uniform=uniform,
@@ -162,18 +242,34 @@ def calculate_blocklabel_dls(g, variants, uniform, degree_dl_kind, use_gt, allow
 
 def calculate_meta_dls(g, metadata, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
-    Calculate the description lengths of each metadata attribute under the DCSBM and PP-DCSBM.
+    Calculates the description lengths of each metadata attribute under the DCSBM and PP-DCSBM.
 
-    Args:
-        g: A graph_tool.Graph object representing the graph.
-        metadata: A list of strings representing the metadata attributes.
-        variants: A list of strings indicating the variants for which the description length should be calculated.
-        uniform: Flag indicating whether to use uniform entropy estimation.
-        degree_dl_kind: The kind of degree distribution used in entropy estimation.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    metadata : list
+        A list of strings representing the metadata attributes.
+
+    variants : list
+        A list of strings indicating the variants for which the description length should be calculated.
+
+    uniform : bool
+        Flag indicating whether to use uniform entropy estimation.
+
+    degree_dl_kind : str
+        The kind of degree distribution used in entropy estimation.
+
+    use_gt : bool
+        Flag indicating if the description length calculation from the graph tool library should be used.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed (only possible if `use_gt=True`).
 
     Returns:
+    -------
+    dict
         A dictionary containing the description lengths for each metadata attribute.
     """
     meta_dls = {}
@@ -187,20 +283,35 @@ def calculate_meta_dls(g, metadata, variants, uniform, degree_dl_kind, use_gt, a
 
 def calculate_dls(g, meta_partition, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
-    Calculate description lengths for multiple SBM variants.
+    Calculates description lengths for multiple SBM variants.
 
-    Args:
-        g (graph_tool.Graph): The input graph.
-        meta_partition (array-like): The metadata partition to be used for description length calculation.
-        variants (list): A list of SBM variants for which description lengths should be calculated.
-        uniform (bool): Flag indicating whether to use uniform entropy estimation in the PPSBM case.
-        degree_dl_kind (str): The kind of degree distribution used in entropy estimation.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        The input graph.
+
+    meta_partition : array-like
+        The metadata partition to be used for description length calculation.
+
+    variants : list
+        A list of SBM variants for which description lengths should be calculated.
+
+    uniform : bool
+        Flag indicating whether to use uniform entropy estimation in the PPSBM case.
+
+    degree_dl_kind : str
+        The kind of degree distribution used in entropy estimation.
+
+    use_gt : bool
+        Flag indicating if the description length calculation from the graph tool library should be used.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed (only possible if `use_gt=True`).
 
     Returns:
-        dict: A dictionary containing calculated description lengths for each SBM variant.
-
+    -------
+    dict
+        A dictionary containing calculated description lengths for each SBM variant.
     """
     return {variant: calculate_dl_variant(g=g, meta_partition=meta_partition, variant=variant, uniform=uniform,
                                           degree_dl_kind=degree_dl_kind,
@@ -210,20 +321,35 @@ def calculate_dls(g, meta_partition, variants, uniform, degree_dl_kind, use_gt, 
 
 def calculate_dl_variant(g, meta_partition, variant, uniform, degree_dl_kind, use_gt, allow_multigraphs):
     """
-    Calculate the description length for a specific SBM variant.
+    Calculates the description length for a specific SBM variant.
 
-    Args:
-        g (graph_tool.Graph): The input graph.
-        meta_partition (array-like): The metadata partition to be used for description length calculation.
-        variant (str): The SBM variant ('dc', 'ndc', or 'pp').
-        uniform (bool): Flag indicating whether to use uniform entropy estimation.
-        degree_dl_kind (str): The kind of degree distribution used in entropy estimation.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        The input graph.
+
+    meta_partition : array-like
+        The metadata partition to be used for description length calculation.
+
+    variant : str
+        The SBM variant ('dc', 'ndc', or 'pp').
+
+    uniform : bool
+        Flag indicating whether to use uniform entropy estimation.
+
+    degree_dl_kind : str
+        The kind of degree distribution used in entropy estimation.
+
+    use_gt : bool
+        Flag indicating if the description length calculation from the graph tool library should be used.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed (only possible if `use_gt=True`).
 
     Returns:
-        float: The calculated description length for the specified SBM variant.
-
+    -------
+    float
+        The calculated description length for the specified SBM variant.
     """
     dc = False
     if variant in ['dc', 'pp']:
@@ -240,24 +366,44 @@ def calculate_dl_variant(g, meta_partition, variant, uniform, degree_dl_kind, us
                             blockstate=blockstate, uniform=uniform, degree_dl_kind=degree_dl_kind)
 
 
-def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, degree_dl_kind, use_gt, allow_multigraphs,
-                                  disable_progress_bar=False):
+def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, degree_dl_kind, use_gt,
+                                  allow_multigraphs, disable_progress_bar=False):
     """
-    Calculate the description lengths of randomised metadata under the DCSBM and PP-DCSBM.
+    Calculates the description lengths of randomised metadata attributes for various SBM variants.
 
-    Args:
-        g: A graph_tool.Graph object representing the graph.
-        metadata: A list of strings representing the metadata attributes.
-        iters_rand: The number of random iterations for computing statistical significance.
-        variants: A list of strings indicating the variants for which the description length should be calculated.
-        uniform: Flag indicating whether to use uniform entropy estimation.
-        degree_dl_kind: The kind of degree distribution used in entropy estimation.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
-        disable_progress_bar: Flag indicating whether to disable progress bar (default: False).
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    metadata : list
+        A list of strings representing the metadata attributes.
+
+    iters_rand : int
+        The number of random iterations to compute statistical significance.
+
+    variants : list
+        A list of SBM variants for which to calculate the description lengths.
+
+    uniform : bool
+        Flag indicating whether to use uniform entropy estimation.
+
+    degree_dl_kind : str
+        The kind of degree distribution used in entropy estimation.
+
+    use_gt : bool
+        Flag indicating if the description length calculation from the graph-tool library should be used.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed (only possible if `use_gt=True`).
+
+    disable_progress_bar : bool, optional
+        Flag indicating whether to disable the progress bar (default: False).
 
     Returns:
-        A dictionary containing the description lengths for randomised metadata.
+    -------
+    dict
+        A dictionary containing the description lengths for randomised metadata attributes.
     """
     meta_dls_randomised = {}
     for meta in metadata:
@@ -281,14 +427,20 @@ def calculate_meta_dls_randomised(g, metadata, iters_rand, variants, uniform, de
 
 def get_dls_states(states, allow_multigraphs):
     """
-    Calculate the description lengths of the given block states.
+    Calculates the description lengths of the provided block states.
 
-    Args:
-        states: A dictionary of block states to compute description lengths for.
-        allow_multigraphs: Flag to indicate if multigraphs are allowed.
+    Parameters:
+    ----------
+    states : dict
+        A dictionary of block states to compute description lengths for.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed.
 
     Returns:
-        A dictionary of description lengths for each block state.
+    -------
+    dict
+        A dictionary where keys are SBM variants and values are their corresponding description lengths.
     """
     return {variant: s.entropy() if variant == 'pp' else s.entropy(multigraph=allow_multigraphs)
             for variant, s in states.items()}
@@ -296,15 +448,23 @@ def get_dls_states(states, allow_multigraphs):
 
 def calculate_uncompressed_dls(g, variants, allow_multigraphs):
     """
-    Calculate the uncompressed description lengths (B=1).
+    Calculates the uncompressed description lengths (with B=1).
 
-    Args:
-        g: A graph_tool.Graph object representing the graph.
-        variants: A list of strings indicating the variants for which the description length should be calculated.
-        allow_multigraphs: Flag to indicate if multigraphs are allowed.
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    variants : list
+        A list of SBM variants for which to calculate the description lengths.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed.
 
     Returns:
-        A dictionary of description lengths for each block state.
+    -------
+    dict
+        A dictionary containing the uncompressed description lengths for each SBM variant.
     """
     deg_corr = {'dc': True,
                 'ndc': False}
@@ -315,67 +475,104 @@ def calculate_uncompressed_dls(g, variants, allow_multigraphs):
             for variant in variants}
 
 
-def compute_metablox_values(meta_dls, meta_dls_randomised, variants, optimal_dl, metadata, num_edges, percentile=1):
+def compute_gamma_values(meta_dls, meta_dls_randomised, variants, optimal_dl, metadata, percentile=1):
     """
-    Calculate the values of the metablox vector based on the description lengths. This includes the main gamma values
-    as well as the edge compression as a second dimension.
+    Computes the gamma values for each metadata attribute based on description lengths and statistical significance.
 
-    Args:
-        meta_dls: A dictionary containing the description lengths for each metadata attribute.
-        meta_dls_randomised: A dictionary containing the description lengths for randomised metadata.
-        variants: A list of strings indicating the variants for which the description length should be calculated.
-        optimal_dl: The optimal description length.
-        metadata: A list of strings representing the metadata attributes.
-        num_edges: Number of edges in the network, to calculate the edge compression.
-        percentile: Percentile to be used to determine statistical significance (default: 1).
+    Parameters:
+    ----------
+    meta_dls : dict
+        A dictionary containing the description lengths for each metadata attribute.
+
+    meta_dls_randomised : dict
+        A dictionary containing the description lengths for randomised metadata.
+
+    variants : list
+        A list of SBM variants for which to calculate the gamma values.
+
+    optimal_dl : dict
+        A dictionary containing the optimal description lengths for each variant.
+
+    metadata : list
+        A list of strings representing the metadata attributes.
+
+    percentile : int, optional
+        Percentile used to determine statistical significance (default: 1).
 
     Returns:
-        A dictionary containing the metablox values for each metadata attribute and for each variant. Keys are names of
-        metadata and values are itself dictionaries, with keys being SBM variants and elements being tuples of the form
-        (gamma, edge compression).
+    -------
+    dict
+        A dictionary containing gamma values for each metadata attribute and each variant. Keys are metadata names,
+        and values are dictionaries with SBM variants as keys and tuples of (gamma, edge compression) as values.
     """
     vals = {}
     for meta in metadata:
-        vals[meta] = {variant: (gamma(partition_dl=meta_dls[meta][variant],
-                                           optimal_dl=optimal_dl[variant],
-                                           random_dl=np.percentile(meta_dls_randomised[meta][variant], percentile)),
-                                     optimal_dl[variant]/num_edges)
-                           for variant in variants}
+        vals[meta] = {variant: gamma(partition_dl=meta_dls[meta][variant],
+                                     optimal_dl=optimal_dl[variant],
+                                     random_dl=np.percentile(meta_dls_randomised[meta][variant], percentile))
+                      for variant in variants}
     return vals
 
 
 def gamma(partition_dl, optimal_dl, random_dl):
     """
-    Calculate the gamma value for a specific partition description length.
+    Calculates the gamma value for a specific partition description length.
 
-    Args:
-        partition_dl (float): Description length of the partition.
-        optimal_dl (float): Optimal description length.
-        random_dl (float): Description length of random partition(s).
+    Parameters:
+    ----------
+    partition_dl : float
+        The description length of the partition.
+
+    optimal_dl : float
+        The optimal description length.
+
+    random_dl : float
+        The description length of random partition(s).
 
     Returns:
-        float: The calculated gamma value.
+    -------
+    float
+        The calculated gamma value.
     """
     return (partition_dl - optimal_dl) / (random_dl - optimal_dl)
 
 
 def check_input(graph, metadata, allow_multigraphs, new_metadata_names=None, verbose=True):
     """
-    Perform checks on g and metadata as preparation for the calculation of the gamma vector.
+    Performs checks on the graph and metadata as preparation for calculating the gamma vector.
 
-    Args:
-        graph: A graph_tool.Graph object representing the graph.
-        metadata: The metadata input, which can be a list of strings or a list of NumPy arrays.
-        allow_multigraphs: Flag to indicate if multigraphs are allowed.
-        new_metadata_names: (Optional) A list of strings representing new metadata names
-                            corresponding to the NumPy arrays in 'metadata'.
-        verbose: Flag indicating whether to display detailed output (default: True).
+    Parameters:
+    ----------
+    graph : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    metadata : list
+        The metadata input, which can be a list of strings or a list of NumPy arrays.
+
+    allow_multigraphs : bool
+        Flag indicating if multigraphs should be allowed.
+
+    new_metadata_names : list, optional
+        A list of strings representing new metadata names corresponding to NumPy arrays in 'metadata' (default: None).
+
+    verbose : bool, optional
+        Flag indicating whether to display detailed output (default: True).
+
+    Returns:
+    -------
+    tuple
+        A tuple containing the processed graph and metadata.
 
     Raises:
-        ValueError: If the graph is not undirected, not a simple graph,
-                    or if metadata is neither a string nor a list of strings.
-        KeyError: If the metadata property does not exist in the graph.
-        TypeError: If the metadata property values are not integers or integers written as floats.
+    ------
+    ValueError
+        If the graph is not undirected, not a simple graph, or if metadata is neither a string nor a list of strings.
+
+    KeyError
+        If the metadata property does not exist in the graph.
+
+    TypeError
+        If the metadata property values are not integers or integers written as floats.
     """
     g = copy.deepcopy(graph)
     metadata = make_list(metadata)
@@ -384,7 +581,7 @@ def check_input(graph, metadata, allow_multigraphs, new_metadata_names=None, ver
     if not isinstance(g, gt.Graph):
         raise ValueError("The 'g' parameter should be a graph_tool.Graph object.")
 
-    # Check if the graph directed, if so make undirected
+    # Check if the graph is directed, if so make undirected
     if g.is_directed():
         g.set_directed(False)
         if verbose:
@@ -444,23 +641,28 @@ def check_input(graph, metadata, allow_multigraphs, new_metadata_names=None, ver
     return g, meta_checked
 
 
-def get_states(g, variants, refine=True, iters_refine=1000):
+def optimise_block_states(g, variants, refine=True, iters_refine=1000):
     """
-    Compute various block models and nested block models of a given graph.
+    Minimise description length for one or multiple SBM variants for a given graph.
 
-    Args:
-        g: A graph_tool.Graph object representing the graph.
-        variants (list): List of strings indicating which variants should be included in the inference of block states
-        (default: ['dc', 'ndc', 'pp']).
-        refine: Boolean indicating whether to refine the block state minimisation (default: True).
-        iters_refine: If refine=True, indicates the number of times the multiflip mcmc algorithm performs 10
-        sweeps. The total number of performed sweeps will therefore be 10*iters_refine (default: 1000).
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    variants : list
+        A list of SBM variants to be included in the inference of block states (default: ['dc', 'ndc', 'pp']).
+
+    refine : bool, optional
+        Flag indicating whether to refine the block state minimization (default: True).
+
+    iters_refine : int, optional
+        If `refine=True`, indicates the number of times the multiflip MCMC algorithm performs 10 sweeps (default: 1000).
 
     Returns:
-        A dictionary containing the block states:
-            - state_dc: SBM state obtained using degree-corrected SBM.
-            - state_ndc: SBM state obtained using non-degree-corrected SBM.
-            - state_pp: SBM state obtained using planted partition degree-corrected SBM.
+    -------
+    dict
+        A dictionary containing the block states for each variant. Keys are SBM variants and values are the corresponding states.
     """
     # Compute block models
     states = {}
@@ -484,6 +686,37 @@ def get_states(g, variants, refine=True, iters_refine=1000):
 
 
 def refine_minimize_blockmodel_dl(g, dc, pp, nested, refine=True, iters=1000, sweeps=10):
+    """
+    Refines and minimizes the description length of block models for the given graph.
+
+    Parameters:
+    ----------
+    g : graph_tool.Graph
+        A graph_tool.Graph object representing the graph.
+
+    dc : bool
+        Flag indicating whether to use degree correction.
+
+    pp : bool
+        Flag indicating whether to use the planted partition model.
+
+    nested : bool
+        Flag indicating whether to use nested block models.
+
+    refine : bool, optional
+        Flag indicating whether to refine the block state minimization (default: True).
+
+    iters : int, optional
+        Number of times the multiflip MCMC algorithm performs sweeps if `refine=True` (default: 1000).
+
+    sweeps : int, optional
+        Number of sweeps performed in each iteration if `refine=True` (default: 10).
+
+    Returns:
+    -------
+    gt.BlockState
+        The refined and minimized block model state.
+    """
     if nested:
         if pp:
             raise ValueError('Nested version of pp variant not implemented.')
