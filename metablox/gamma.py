@@ -11,7 +11,7 @@ from metablox.utils import is_multigraph, simplify_multigraph, make_list, str_to
 def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=True, variants='all', iters_rand=100,
                                  new_metadata_names=None, uniform=False, degree_dl_kind='distributed',
                                  variants_infer='all', refine_states=False, iters_refine=1000, return_dls=False,
-                                 return_states=False, verbose=True):
+                                 return_states=False, output_format='dict', verbose=True):
     """
     Calculates the gamma values for each metadata attribute based on the graph and metadata.
 
@@ -65,6 +65,9 @@ def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=Tru
     return_states : bool, optional
         Flag indicating whether to return the blockmodel states of the fitted SBMs (default: False).
 
+    output_format : str, optional
+        String indicating whether the output format should be dictionaries ('dict') or lists ('list'), (default: 'dict').
+
     verbose : bool, optional
         Flag indicating whether to display detailed output (default: True).
 
@@ -111,6 +114,9 @@ def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=Tru
                                  metadata=metadata, variants=variants)
 
     second_dim = compute_edge_compression(optimal_dl=states_dls, variants=variants, num_edges=g.num_edges())
+
+    if output_format == 'list':
+        gamma = {variant: [val[variant] for key, val in gamma.items()] for variant in variants}
 
     if return_dls:
         extra_output = {'meta_dls': meta_dls,
