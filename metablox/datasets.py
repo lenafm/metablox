@@ -17,6 +17,19 @@ def _load_pickle(filename):
     return pickledfile
 
 
+def load_scbm_graph():
+    """
+    Load and return the scbm graph used in the metablox paper, generated using the scbm model in
+    Mangold, Lena, and Camille Roth. "Generative models for two-ground-truth partitions in networks." Physical Review E
+    108.5 (2023): 054308.
+
+    :return: graphml object from graph tool library
+    """
+
+    file_path = _get_dataset_file_path('g_scbm.graphml')
+    return load_graph(file_path)
+
+
 def load_kc_graph():
     """
     Load and return the karate club graph.
