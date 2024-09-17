@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 from adjustText import adjust_text
 
 
-def plot_gamma(gamma, dimx, dimy, metadata=None,
-               title=None, annotations=None, lims=None,
-               c=None, plotxy=True, outfile=None, file_format='png'):
+def plot_metadata_relevance(gamma, dimx, dimy, metadata=None,
+                            title=None, annotations=None, lims=None,
+                            c=None, plotxy=True, outfile=None, file_format='png'):
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
 
     possible_dimensions = ['dc', 'ndc', 'pp']
