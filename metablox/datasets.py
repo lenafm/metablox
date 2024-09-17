@@ -74,17 +74,6 @@ def load_kc_state_dcsbm():
     return _load_pickle(file_path)
 
 
-def load_kc_state_dcsbm_single_node():
-    """
-    Load and return a dcsbm block state of the karate club.
-
-    :return: blockstate object from graph tool library
-    """
-
-    file_path = _get_dataset_file_path('state_kc_dcsbm_single_node.pickle')
-    return _load_pickle(file_path)
-
-
 def load_football_state_pp():
     """
     Load and return an pp block state of the football network.
