@@ -8,25 +8,25 @@ from metablox.dl import calculate_dl
 from metablox.utils import is_multigraph, simplify_multigraph, make_list, str_to_int_mapping
 
 
-def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all', iters_rand=100,
-                    new_metadata_names=None, uniform=False, degree_dl_kind='distributed', variants_infer='all',
-                    refine_states=False, iters_refine=1000, return_dls=False, return_states=False, verbose=True,
-                    synthetic=False):
+def calculate_metadata_relevance(g, metadata, use_gt=True, allow_multigraphs=True, variants='all', iters_rand=100,
+                                 new_metadata_names=None, uniform=False, degree_dl_kind='distributed',
+                                 variants_infer='all', refine_states=False, iters_refine=1000, return_dls=False,
+                                 return_states=False, verbose=True):
     """
     Calculate the gamma values for each metadata attribute based on the graph and metadata.
 
     Args:
         g: A graph_tool.Graph object representing the graph.
         metadata: The metadata input, which can be a list of strings or a list of NumPy arrays.
-        use_gt: Flag indicating if the description length calculation from the graph tool library should be used.
-        allow_multigraphs: Flag indicating if multigraphs should be allowed (only possible if gt=True).
+        use_gt: Flag indicating if the description length calculation from the graph tool library should be used
+        (default: True).
+        allow_multigraphs: Flag indicating if multigraphs should be allowed (can only be True if gt=True; default: True).
         variants (str or list): A string 'all' or a list of SBM variants (options: 'dc', 'ndc', and 'pp') to be included
         as models for the calculation of gamma (default: 'all').
         iters_rand (optional): The number of random iterations for computing statistical significance (default: 100).
         new_metadata_names (optional): Labels for metadata if metadata is a list of arrays (default: None).
-        uniform (optional): Flag indicating whether to use uniform entropy estimation (default: False).
+        uniform (optional): Flag indicating whether to use uniform entropy estimation for pp sbm (default: False).
         degree_dl_kind (optional): The kind of degree distribution used in entropy estimation (default: 'distributed').
-        exact (optional): Flag indicating whether to use exact entropy estimation (default: True).
         variants_infer (str or list): A string 'all' or a list of SBM variants (options: 'dc', 'ndc', and 'pp') to be
         included for the inference of the optimal partition (default: 'all').
         refine_states: Flag indicating whether to refine minimisation of block states by running 10*iters_refine sweeps
@@ -38,22 +38,23 @@ def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all'
         (default: False).
         return_states: Flag indicating whether to return the blockmodel states of the fitted SBMs (default: False).
         verbose: Flag indicating whether to display detailed output (default: False).
-        synthetic: Flag indicating whether the network is a synthetic network with a planted partition; if True, and
-        if return_dls = True, the function also returns the description length of the planted partition (default: False)
 
     Returns:
-        A dictionary containing gamma values for each metadata attribute and for each variant:
+        A dictionary containing tuples of metablox values for each metadata attribute and for each variant; the tuples
+        contain the gamma value and the edge compression as the accompanying second dimension.
         {
             'metadata_attribute_1': {
-                'gamma_dc': gamma_value_dc,
-                'gamma_pp': gamma_value_pp
+                'dc': (gamma_value_dc_attr1, edge_compression_dc_attr1)
+                'pp': (gamma_value_pp_attr1, edge_compression_pp_attr1)
             },
             'metadata_attribute_2': {
-                'gamma_dc': gamma_value_dc,
-                'gamma_pp': gamma_value_pp
+                'dc': (gamma_value_dc_attr2, edge_compression_dc_attr2)
+                'pp': (gamma_value_pp_attr2, edge_compression_pp_attr2)
             },
             ...
         }
+        If return_dls and/or return_states are set to True, the function returns a tuple, with this dictionary as the
+        first element plus a second element with the description lengths/states for each metadata attribute and variant.
     """
     if not use_gt:
         if allow_multigraphs:
@@ -66,7 +67,6 @@ def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all'
         tqdm.write("Minimizing block models and nested block models.")
     states = get_states(g=g, variants=variants_infer, refine=refine_states, iters_refine=iters_refine)
     states_dls = get_dls_states(states=states, allow_multigraphs=allow_multigraphs)
-    uncompressed_dls = calculate_uncompressed_dls(g=g, variants=variants, allow_multigraphs=allow_multigraphs)
     if verbose:
         tqdm.write("Calculating description lengths for metadata.")
     meta_dls = calculate_meta_dls(g=g, metadata=metadata, variants=variants, uniform=uniform,
@@ -82,33 +82,19 @@ def calculate_gamma(g, metadata, use_gt, allow_multigraphs=False, variants='all'
 
     if verbose:
         tqdm.write("Calculating gamma values.")
-    gammas = calculate_gamma_values(meta_dls=meta_dls, meta_dls_randomised=meta_dls_randomised, optimal_dl=states_dls,
-                                    metadata=metadata, variants=variants)
+    vals = compute_metablox_values(meta_dls=meta_dls, meta_dls_randomised=meta_dls_randomised, optimal_dl=states_dls,
+                                   metadata=metadata, num_edges=g.num_edges(), variants=variants)
 
     if return_dls:
-        if synthetic:
-            if verbose:
-                tqdm.write("Determining description length of planted partition.")
-            blocklabel_dl = calculate_blocklabel_dls(g=g, variants=variants, uniform=uniform,
-                                                     degree_dl_kind=degree_dl_kind, use_gt=use_gt,
-                                                     allow_multigraphs=allow_multigraphs)
-            extra_output = {'meta_dls': meta_dls,
-                            'meta_dls_randomised': meta_dls_randomised,
-                            'state_dls': states_dls,
-                            'uncompressed_dls': uncompressed_dls,
-                            'blocklabel_dl': blocklabel_dl}
-        else:
-            extra_output = {'meta_dls': meta_dls,
-                            'meta_dls_randomised': meta_dls_randomised,
-                            'state_dls': states_dls,
-                            'uncompressed_dls': uncompressed_dls}
+        extra_output = {'meta_dls': meta_dls,
+                        'meta_dls_randomised': meta_dls_randomised}
         if return_states:
             extra_output['states'] = states
-        return gammas, extra_output
+        return vals, extra_output
     elif return_states:
-        return gammas, {'states': states}
+        return vals, {'states': states}
     else:
-        return gammas
+        return vals
 
 
 def check_variants(variants):
@@ -329,9 +315,10 @@ def calculate_uncompressed_dls(g, variants, allow_multigraphs):
             for variant in variants}
 
 
-def calculate_gamma_values(meta_dls, meta_dls_randomised, variants, optimal_dl, metadata, percentile=1):
+def compute_metablox_values(meta_dls, meta_dls_randomised, variants, optimal_dl, metadata, num_edges, percentile=1):
     """
-    Calculate the gamma values based on the description lengths.
+    Calculate the values of the metablox vector based on the description lengths. This includes the main gamma values
+    as well as the edge compression as a second dimension.
 
     Args:
         meta_dls: A dictionary containing the description lengths for each metadata attribute.
@@ -339,18 +326,22 @@ def calculate_gamma_values(meta_dls, meta_dls_randomised, variants, optimal_dl, 
         variants: A list of strings indicating the variants for which the description length should be calculated.
         optimal_dl: The optimal description length.
         metadata: A list of strings representing the metadata attributes.
+        num_edges: Number of edges in the network, to calculate the edge compression.
         percentile: Percentile to be used to determine statistical significance (default: 1).
 
     Returns:
-        A dictionary containing the gamma values for each metadata attribute.
+        A dictionary containing the metablox values for each metadata attribute and for each variant. Keys are names of
+        metadata and values are itself dictionaries, with keys being SBM variants and elements being tuples of the form
+        (gamma, edge compression).
     """
-    gamma_val = {}
+    vals = {}
     for meta in metadata:
-        gamma_val[meta] = {variant: gamma(partition_dl=meta_dls[meta][variant],
-                                          optimal_dl=optimal_dl[variant],
-                                          random_dl=np.percentile(meta_dls_randomised[meta][variant], percentile))
+        vals[meta] = {variant: (gamma(partition_dl=meta_dls[meta][variant],
+                                           optimal_dl=optimal_dl[variant],
+                                           random_dl=np.percentile(meta_dls_randomised[meta][variant], percentile)),
+                                     optimal_dl[variant]/num_edges)
                            for variant in variants}
-    return gamma_val
+    return vals
 
 
 def gamma(partition_dl, optimal_dl, random_dl):
