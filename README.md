@@ -3,8 +3,8 @@
 metablox (metadata block structure exploration) is a Python library for quantifying the relationship between 
 categorical node metadata and block structure of a network, as introduced in
 
-[Mangold, Lena and Camille Roth. “Quantifying metadata-structure relationships in networks using 
-description length.” (2023) arXiv:2311.18705 [cs.SI]](https://arxiv.org/abs/2311.18705).
+[Lena Mangold and Camille Roth. “Quantifying metadata relevance to network block structure using description 
+length”. Communications Physics 7.1 (2024), p. 331](https://www.nature.com/articles/s42005-024-01819-y).
 
 Please cite the paper if you use the measure in your work.
 
@@ -16,7 +16,8 @@ Clone this repository to your local machine:
 git clone https://github.com/lenafm/metablox.git
 ```
 
-Then `cd` into the created `metablox` directory and use `pip` to install the package locally:
+Then `cd` into the created `metablox` directory and use `pip` to install the package locally (note that you need to
+have the [graph-tool](https://graph-tool.skewed.de/installation.html) library installed for `metablox` to work).
 
 ``` 
 pip install -e .
