@@ -8,6 +8,8 @@ length”. Communications Physics 7.1 (2024), p. 331](https://www.nature.com/art
 
 Please cite the paper if you use the measure in your work.
 
+<img src="img/landscape.png" width="300">
+
 ## Installation
 
 Clone this repository to your local machine:
