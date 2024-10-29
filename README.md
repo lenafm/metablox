@@ -72,6 +72,8 @@ Please make sure to update tests as appropriate.
 The research that was conducted to create the first version of this tool was funded by CNRS and the ERC Consolidator
 Grant [Socsemics](https://socsemics.huma-num.fr/) (grant #772743).
 
+<img src="img/socsemics.png" width="200">
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/)
